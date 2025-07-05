@@ -1,5 +1,7 @@
-image_outputs/
-hi-chy/
+image_outputs/*
+hi-chy/*
+.venv/*
+html/*
 
 .DS_Store
 
