@@ -19,6 +19,7 @@ SMOLVLM2_ROOT="/home/kmlynch/clams_apps/app-smolvlm2-captioner"
 declare -a CONFIGS=(
   "hi-chy-annotator_instructions-3"
   "hi-chy-annotator_instructions-4"
+  "hi-chy-revised-3"
   "hi-chy-revised-4"
 )
 
