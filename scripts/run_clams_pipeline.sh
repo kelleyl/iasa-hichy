@@ -14,7 +14,6 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 MMIF_INPUT_DIR="$PROJECT_ROOT/mmif"
 LLAVA_ROOT="/home/kmlynch/clams_apps/app-llava-captioner"
 SMOLVLM2_ROOT="/home/kmlynch/clams_apps/app-smolvlm2-captioner"
-MOONDREAM_ROOT="/home/kmlynch/clams_apps/app-moondream-captioner"
 
 # Config files to run (without .yaml)
 declare -a CONFIGS=(
@@ -66,7 +65,6 @@ process_file() {
   local model_type="unknown"
   [[ "$app_root" == *"llava"* ]]    && model_type="llava"
   [[ "$app_root" == *"smolvlm2"* ]] && model_type="smol-vlm2"
-  [[ "$app_root" == *"moondream"* ]] && model_type="moondream"
 
   # Ensure config file exists
   local config_path="$app_root/config/$config_name.yaml"
