@@ -300,89 +300,100 @@ def print_results(label, json_files, total_stats):
         print()
 
 
-def print_comparison_table(pre_stats, post_stats, combined_stats):
+def print_comparison_table(pre_stats, post_stats, combined_stats, comps_stats):
     """Print a comparison table of key metrics."""
     print("=" * 80)
     print("=== COMPARISON TABLE ===")
     print("=" * 80)
     
     # Table header
-    print(f"{'Metric':<40} {'PRE-2000':<12} {'POST-2000':<12} {'COMBINED':<12}")
+    print(f"{'Metric':<40} {'PRE-2000':<12} {'POST-2000':<12} {'COMBINED':<12} {'comps':<12}")
     print("-" * 80)
     
     # Basic counts
-    print(f"{'Total chyrons':<40} {pre_stats['total_chyrons']:<12} {post_stats['total_chyrons']:<12} {combined_stats['total_chyrons']:<12}")
-    print(f"{'Name-only chyrons':<40} {pre_stats['only_names_count']:<12} {post_stats['only_names_count']:<12} {combined_stats['only_names_count']:<12}")
+    print(f"{'Total chyrons':<40} {pre_stats['total_chyrons']:<12} {post_stats['total_chyrons']:<12} {combined_stats['total_chyrons']:<12} {comps_stats['total_chyrons']:<12}")
+    print(f"{'Name-only chyrons':<40} {pre_stats['only_names_count']:<12} {post_stats['only_names_count']:<12} {combined_stats['only_names_count']:<12} {comps_stats['only_names_count']:<12}")
     
     # Program counts
     pre_programs = len(pre_stats.get('program_chyron_counts', {}))
     post_programs = len(post_stats.get('program_chyron_counts', {}))
     combined_programs = len(combined_stats.get('program_chyron_counts', {}))
+    comps_programs = len(comps_stats.get('program_chyron_counts', {}))
     
-    print(f"{'Distinct programs':<40} {pre_programs:<12} {post_programs:<12} {combined_programs:<12}")
+    print(f"{'Distinct programs':<40} {pre_programs:<12} {post_programs:<12} {combined_programs:<12} {comps_programs:<12}")
     
     # Percentages
     pre_name_only_pct = pre_stats['only_names_count'] / pre_stats['total_chyrons'] * 100 if pre_stats['total_chyrons'] > 0 else 0
     post_name_only_pct = post_stats['only_names_count'] / post_stats['total_chyrons'] * 100 if post_stats['total_chyrons'] > 0 else 0
     combined_name_only_pct = combined_stats['only_names_count'] / combined_stats['total_chyrons'] * 100 if combined_stats['total_chyrons'] > 0 else 0
+    comps_name_only_pct = comps_stats['only_names_count'] / comps_stats['total_chyrons'] * 100 if comps_stats['total_chyrons'] > 0 else 0
     
-    print(f"{'Name-only chyrons (%)':<40} {pre_name_only_pct:<12.1f} {post_name_only_pct:<12.1f} {combined_name_only_pct:<12.1f}")
+    print(f"{'Name-only chyrons (%)':<40} {pre_name_only_pct:<12.1f} {post_name_only_pct:<12.1f} {combined_name_only_pct:<12.1f} {comps_name_only_pct:<12.1f}")
     
     # Averages per chyron
     pre_avg_chars = pre_stats['total_chars_text'] / pre_stats['total_chyrons'] if pre_stats['total_chyrons'] > 0 else 0
     post_avg_chars = post_stats['total_chars_text'] / post_stats['total_chyrons'] if post_stats['total_chyrons'] > 0 else 0
     combined_avg_chars = combined_stats['total_chars_text'] / combined_stats['total_chyrons'] if combined_stats['total_chyrons'] > 0 else 0
+    comps_avg_chars = comps_stats['total_chars_text'] / comps_stats['total_chyrons'] if comps_stats['total_chyrons'] > 0 else 0
     
-    print(f"{'Avg chars per chyron':<40} {pre_avg_chars:<12.2f} {post_avg_chars:<12.2f} {combined_avg_chars:<12.2f}")
+    print(f"{'Avg chars per chyron':<40} {pre_avg_chars:<12.2f} {post_avg_chars:<12.2f} {combined_avg_chars:<12.2f} {comps_avg_chars:<12.2f}")
     
     pre_avg_words = pre_stats['total_words_text'] / pre_stats['total_chyrons'] if pre_stats['total_chyrons'] > 0 else 0
     post_avg_words = post_stats['total_words_text'] / post_stats['total_chyrons'] if post_stats['total_chyrons'] > 0 else 0
     combined_avg_words = combined_stats['total_words_text'] / combined_stats['total_chyrons'] if combined_stats['total_chyrons'] > 0 else 0
+    comps_avg_words = comps_stats['total_words_text'] / comps_stats['total_chyrons'] if comps_stats['total_chyrons'] > 0 else 0
     
-    print(f"{'Avg words per chyron':<40} {pre_avg_words:<12.2f} {post_avg_words:<12.2f} {combined_avg_words:<12.2f}")
+    print(f"{'Avg words per chyron':<40} {pre_avg_words:<12.2f} {post_avg_words:<12.2f} {combined_avg_words:<12.2f} {comps_avg_words:<12.2f}")
     
     pre_avg_attrs = pre_stats['total_attributes'] / pre_stats['total_chyrons'] if pre_stats['total_chyrons'] > 0 else 0
     post_avg_attrs = post_stats['total_attributes'] / post_stats['total_chyrons'] if post_stats['total_chyrons'] > 0 else 0
     combined_avg_attrs = combined_stats['total_attributes'] / combined_stats['total_chyrons'] if combined_stats['total_chyrons'] > 0 else 0
+    comps_avg_attrs = comps_stats['total_attributes'] / comps_stats['total_chyrons'] if comps_stats['total_chyrons'] > 0 else 0
     
-    print(f"{'Avg attributes per chyron':<40} {pre_avg_attrs:<12.2f} {post_avg_attrs:<12.2f} {combined_avg_attrs:<12.2f}")
+    print(f"{'Avg attributes per chyron':<40} {pre_avg_attrs:<12.2f} {post_avg_attrs:<12.2f} {combined_avg_attrs:<12.2f} {comps_avg_attrs:<12.2f}")
     
     # Attribute statistics
     pre_avg_attr_chars = pre_stats['total_chars_attributes'] / pre_stats['total_attributes'] if pre_stats['total_attributes'] > 0 else 0
     post_avg_attr_chars = post_stats['total_chars_attributes'] / post_stats['total_attributes'] if post_stats['total_attributes'] > 0 else 0
     combined_avg_attr_chars = combined_stats['total_chars_attributes'] / combined_stats['total_attributes'] if combined_stats['total_attributes'] > 0 else 0
+    comps_avg_attr_chars = comps_stats['total_chars_attributes'] / comps_stats['total_attributes'] if comps_stats['total_attributes'] > 0 else 0
     
-    print(f"{'Avg chars per attribute':<40} {pre_avg_attr_chars:<12.2f} {post_avg_attr_chars:<12.2f} {combined_avg_attr_chars:<12.2f}")
+    print(f"{'Avg chars per attribute':<40} {pre_avg_attr_chars:<12.2f} {post_avg_attr_chars:<12.2f} {combined_avg_attr_chars:<12.2f} {comps_avg_attr_chars:<12.2f}")
     
     # Program statistics
     pre_chyrons_per_program = list(pre_stats.get('program_chyron_counts', {}).values())
     post_chyrons_per_program = list(post_stats.get('program_chyron_counts', {}).values())
     combined_chyrons_per_program = list(combined_stats.get('program_chyron_counts', {}).values())
+    comps_chyrons_per_program = list(comps_stats.get('program_chyron_counts', {}).values())
     
     pre_avg_chyrons_per_program = np.mean(pre_chyrons_per_program) if pre_chyrons_per_program else 0
     post_avg_chyrons_per_program = np.mean(post_chyrons_per_program) if post_chyrons_per_program else 0
     combined_avg_chyrons_per_program = np.mean(combined_chyrons_per_program) if combined_chyrons_per_program else 0
+    comps_avg_chyrons_per_program = np.mean(comps_chyrons_per_program) if comps_chyrons_per_program else 0
     
-    print(f"{'Avg chyrons per program':<40} {pre_avg_chyrons_per_program:<12.2f} {post_avg_chyrons_per_program:<12.2f} {combined_avg_chyrons_per_program:<12.2f}")
+    print(f"{'Avg chyrons per program':<40} {pre_avg_chyrons_per_program:<12.2f} {post_avg_chyrons_per_program:<12.2f} {combined_avg_chyrons_per_program:<12.2f} {comps_avg_chyrons_per_program:<12.2f}")
     
     # Name length statistics
     pre_avg_name = np.mean(pre_stats['name_lengths']) if pre_stats['name_lengths'] else 0
     post_avg_name = np.mean(post_stats['name_lengths']) if post_stats['name_lengths'] else 0
     combined_avg_name = np.mean(combined_stats['name_lengths']) if combined_stats['name_lengths'] else 0
+    comps_avg_name = np.mean(comps_stats['name_lengths']) if comps_stats['name_lengths'] else 0
     
-    print(f"{'Avg name length (chars)':<40} {pre_avg_name:<12.2f} {post_avg_name:<12.2f} {combined_avg_name:<12.2f}")
+    print(f"{'Avg name length (chars)':<40} {pre_avg_name:<12.2f} {post_avg_name:<12.2f} {combined_avg_name:<12.2f} {comps_avg_name:<12.2f}")
     
     # Normalization analysis
     if pre_stats.get('normalized_vs_unnormalized_diffs') and post_stats.get('normalized_vs_unnormalized_diffs'):
         pre_diffs = pre_stats['normalized_vs_unnormalized_diffs']
         post_diffs = post_stats['normalized_vs_unnormalized_diffs']
         combined_diffs = combined_stats['normalized_vs_unnormalized_diffs']
+        comps_diffs = comps_stats['normalized_vs_unnormalized_diffs']
         
         pre_additional_info_pct = len([d for d in pre_diffs if d > 0]) / len(pre_diffs) * 100 if pre_diffs else 0
         post_additional_info_pct = len([d for d in post_diffs if d > 0]) / len(post_diffs) * 100 if post_diffs else 0
         combined_additional_info_pct = len([d for d in combined_diffs if d > 0]) / len(combined_diffs) * 100 if combined_diffs else 0
+        comps_additional_info_pct = len([d for d in comps_diffs if d > 0]) / len(comps_diffs) * 100 if comps_diffs else 0
         
-        print(f"{'Names w/ extra info (%)':<40} {pre_additional_info_pct:<12.1f} {post_additional_info_pct:<12.1f} {combined_additional_info_pct:<12.1f}")
+        print(f"{'Names w/ extra info (%)':<40} {pre_additional_info_pct:<12.1f} {post_additional_info_pct:<12.1f} {combined_additional_info_pct:<12.1f} {comps_additional_info_pct:<12.1f}")
     
     print("=" * 80)
 
@@ -391,12 +402,14 @@ def main():
     base_dir = Path("aapb-annotations/understanding-chyrons")
     pre_dir = base_dir / "250606-hi-chy-hi-pre-2000"
     post_dir = base_dir / "250606-hi-chy-hi-post-2000"
+    comps_dir = base_dir / "250829-hi-chy-comps"
 
     pre_files = list(pre_dir.glob("*.json"))
     post_files = list(post_dir.glob("*.json"))
+    comps_files = list(comps_dir.glob("*.json"))
 
-    if not pre_files and not post_files:
-        print(f"No JSON files found in {pre_dir} or {post_dir}")
+    if not pre_files and not post_files and not comps_files:
+        print(f"No JSON files found in {pre_dir}, {post_dir}, or {comps_dir}")
         return
 
     # Initialize empty stats for missing datasets
@@ -431,7 +444,16 @@ def main():
         print(f"No JSON files found for POST-2000 in {post_dir}\n")
         post_stats = empty_stats
 
-    # Combined
+    # Comps
+    if comps_files:
+        comps_stats = compute_total_stats(comps_files)
+        print_results("comps", comps_files, comps_stats)
+        print()
+    else:
+        print(f"No JSON files found for comps in {comps_dir}\n")
+        comps_stats = empty_stats
+
+    # Combined (PRE-2000 + POST-2000 only)
     combined_files = pre_files + post_files
     if combined_files:
         combined_stats = compute_total_stats(combined_files)
@@ -439,7 +461,7 @@ def main():
         print()
         
         # Print comparison table
-        print_comparison_table(pre_stats, post_stats, combined_stats)
+        print_comparison_table(pre_stats, post_stats, combined_stats, comps_stats)
 
 
 if __name__ == "__main__":
