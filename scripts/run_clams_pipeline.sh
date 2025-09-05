@@ -15,7 +15,6 @@ COMP_MMIF_SOURCE="/llc_data/clams/hichy-evaluation-dataset/mmifs-from-swt"
 LLAVA_ROOT="/home/kmlynch/clams_apps/app-llava-captioner"
 SMOLVLM2_ROOT="/home/kmlynch/clams_apps/app-smolvlm2-captioner"
 LLAMA_ROOT="/home/kmlynch/clams_apps/app-llama-video-summarizer"
-GPTOSS_ROOT="/home/kmlynch/clams_apps/app-gptoss-video-summarizer"
 
 # Create comps_mmif directory if it doesn't exist
 if [[ ! -d "$COMP_MMIF_DIR" ]]; then
@@ -65,6 +64,9 @@ setup_comparison_mmifs() {
 declare -a CONFIGS=(
   "hi-chy-annotator_instructions-3"
   "hi-chy-revised-3"
+  "hi-chy-annotator_instructions-4"
+  "hi-chy-revised-4"
+
 )
 
 # Captioner models
@@ -94,15 +96,27 @@ for mmif_path in "$COMP_MMIF_DIR"/*.mmif; do
   fi
 done
 
-# Parse arguments: [NUM_RUNS] [--mode <cli|service>] [--llava-port <port>] [--smolvlm2-port <port>] [--llama-port <port>] [--gptoss-port <port>]
-NUM_RUNS=1; MODE="cli"; LLAVA_PORT=5000; SMOLVLM2_PORT=5001; LLAMA_PORT=5002; GPTOSS_PORT=5003
+# Discover doctr MMIF basenames
+declare -a DOCTR_VIDEO_FILES=()
+DOCTR_INPUT_DIR="/home/krim/app-doctr-sdk134@hi-chy-hi-full"
+
+if [[ -d "$DOCTR_INPUT_DIR" ]]; then
+  for mmif_path in "$DOCTR_INPUT_DIR"/*.mmif; do
+    if [[ -f "$mmif_path" ]]; then
+      base=$(basename "$mmif_path" ".mmif")
+      DOCTR_VIDEO_FILES+=("$base")
+    fi
+  done
+fi
+
+# Parse arguments: [NUM_RUNS] [--mode <cli|service>] [--llava-port <port>] [--smolvlm2-port <port>] [--llama-port <port>]
+NUM_RUNS=1; MODE="cli"; LLAVA_PORT=5000; SMOLVLM2_PORT=5001; LLAMA_PORT=5002
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --mode) MODE="$2"; shift 2;;
     --llava-port) LLAVA_PORT="$2"; shift 2;;
     --smolvlm2-port) SMOLVLM2_PORT="$2"; shift 2;;
     --llama-port) LLAMA_PORT="$2"; shift 2;;
-    --gptoss-port) GPTOSS_PORT="$2"; shift 2;;
     *) NUM_RUNS="$1"; shift;;
   esac
 done
@@ -311,34 +325,20 @@ process_llama_file() {
   fi
 }
 
-# Function to process gptoss with captioner outputs
-process_gptoss_file() {
-  local basename="$1" config_name="$2" captioner_model="$3" run_number="$4" mode="$5" port="$6" is_comparison="$7"
+# Function to process llama with doctr files
+process_llama_doctr_file() {
+  local basename="$1" run_number="$2" mode="$3" port="$4"
   
-  # Determine captioner output directory based on whether this is comparison data
-  if [[ "$is_comparison" == "true" ]]; then
-    local captioner_output_dir="$captioner_model"
-    (( run_number > 1 )) && captioner_output_dir+="-run-$run_number"
-    local captioner_input_file="$PROJECT_ROOT/comps_outputs/$captioner_output_dir/$config_name/${basename}.mmif"
-    
-    # Setup gptoss output directory
-    local gptoss_output_dir="gptoss/$captioner_model"
-    (( run_number > 1 )) && gptoss_output_dir+="-run-$run_number"
-    local output_dir="$PROJECT_ROOT/comps_outputs/$gptoss_output_dir/$config_name"
-  else
-    local captioner_output_dir="$captioner_model"
-    (( run_number > 1 )) && captioner_output_dir+="-run-$run_number"
-    local captioner_input_file="$PROJECT_ROOT/output/$captioner_output_dir/$config_name/${basename}.mmif"
-    
-    # Setup gptoss output directory
-    local gptoss_output_dir="gptoss/$captioner_model"
-    (( run_number > 1 )) && gptoss_output_dir+="-run-$run_number"
-    local output_dir="$PROJECT_ROOT/output/$gptoss_output_dir/$config_name"
-  fi
+  local doctr_input_file="$DOCTR_INPUT_DIR/${basename}.mmif"
   
-  # Check if captioner output exists
-  if [[ ! -f "$captioner_input_file" ]]; then
-    echo "[WARN] Captioner input file not found: $captioner_input_file"
+  # Setup llama output directory for doctr
+  local llama_output_dir="llama/doctr"
+  (( run_number > 1 )) && llama_output_dir+="-run-$run_number"
+  local output_dir="$PROJECT_ROOT/output/$llama_output_dir"
+  
+  # Check if doctr input exists
+  if [[ ! -f "$doctr_input_file" ]]; then
+    echo "[WARN] Doctr input file not found: $doctr_input_file"
     return 0
   fi
   
@@ -346,59 +346,51 @@ process_gptoss_file() {
   
   mkdir -p "$output_dir"
   
-  # Determine which gptoss config to use based on captioner model
-  local gptoss_config
-  if [[ "$captioner_model" == "llava" ]]; then
-    gptoss_config="iasa-hichy-chyron-llava"
-  else
-    gptoss_config="iasa-hichy-chyron-smolvlm2"
-  fi
+  # Use the llava config for doctr processing
+  local llama_config="iasa-hichy-chyron-llava"
   
   # Ensure config file exists
-  local config_path="$GPTOSS_ROOT/config/$gptoss_config.yaml"
+  local config_path="$LLAMA_ROOT/config/$llama_config.yaml"
   if [[ ! -f "$config_path" ]]; then
-    echo "[WARN] Skipping missing gptoss config: $config_path" >&2
+    echo "[WARN] Skipping missing llama config: $config_path" >&2
     return 0
   fi
 
   if [[ "$mode" == "cli" ]]; then
     if [[ ! -s "$output_file" ]]; then
-      echo "[INFO] Running gptoss processing: $basename ($config_name -> $captioner_model, run $run_number) [COMPARISON: $is_comparison]"
+      echo "[INFO] Running llama doctr processing: $basename (run $run_number)"
       start_time=$(date +%s)
       
-      # Set environment variable for service URL
-      export GPTOSS_URL="http://localhost:$port"
-      
-      (cd "$GPTOSS_ROOT" && "$GPTOSS_ROOT/.venv/bin/python" "$GPTOSS_ROOT/cli.py" --config "config/$gptoss_config.yaml" "$captioner_input_file") > "$output_file"
+      (cd "$LLAMA_ROOT" && "$LLAMA_ROOT/.venv/bin/python" "$LLAMA_ROOT/cli.py" --config "config/$llama_config.yaml" "$doctr_input_file") > "$output_file"
       
       status=$?
       end_time=$(date +%s)
-      echo "gptoss,$basename,$mode,3,$((end_time-start_time))" >> "$output_dir/timing.log"
+      echo "llama-doctr,$basename,$mode,3,$((end_time-start_time))" >> "$output_dir/timing.log"
       if (( status != 0 )); then
-        echo "Error: GPT-OSS processing failed: $basename ($config_name -> $captioner_model, run $run_number)" >&2
+        echo "Error: Llama doctr processing failed: $basename (run $run_number)" >&2
         rm -f "$output_file"
         return 1
       fi
     else
-      echo "[INFO] Skipping existing gptoss output: $basename ($config_name -> $captioner_model, run $run_number) [COMPARISON: $is_comparison]"
+      echo "[INFO] Skipping existing llama doctr output: $basename (run $run_number)"
     fi
   else
     if [[ ! -s "$output_file" ]]; then
-      echo "[INFO] Posting to gptoss service: $basename ($config_name -> $captioner_model) [COMPARISON: $is_comparison]"
+      echo "[INFO] Posting to llama service for doctr: $basename"
       start_time=$(date +%s)
       
-      curl -s --fail-with-body -H "Accept: application/json" -X POST -d@"$captioner_input_file" "http://localhost:$port?config=config/$gptoss_config.yaml" > "$output_file"
+      curl -s --fail-with-body -H "Accept: application/json" -X POST -d@"$doctr_input_file" "http://localhost:$port?config=config/$llama_config.yaml" > "$output_file"
       
       status=$?
       end_time=$(date +%s)
-      echo "gptoss,$basename,$mode,3,$((end_time-start_time))" >> "$output_dir/timing.log"
+      echo "llama-doctr,$basename,$mode,3,$((end_time-start_time))" >> "$output_dir/timing.log"
       if (( status != 0 )); then
-        echo "Error: GPT-OSS service request failed: $basename ($config_name -> $captioner_model)" >&2
+        echo "Error: Llama doctr service request failed: $basename" >&2
         rm -f "$output_file"
         return 1
       fi
     else
-      echo "[INFO] Skipping existing gptoss output: $basename ($config_name -> $captioner_model) [COMPARISON: $is_comparison]"
+      echo "[INFO] Skipping existing llama doctr output: $basename"
     fi
   fi
 }
@@ -490,30 +482,12 @@ if [[ ${#COMP_VIDEO_FILES[@]} -gt 0 ]]; then
   done
 fi
 
-# Phase 3: Run GPT-OSS processing on captioner outputs for main dataset
-echo "Starting GPT-OSS processing phase for main dataset"
-for (( run=1; run<=NUM_RUNS; run++ )); do
-  for basename in "${VIDEO_FILES[@]}"; do
-    for config_name in "${CONFIGS[@]}"; do
-      # Process gptoss for each captioner model output
-      for captioner_model in "${CAPTIONER_MODELS[@]}"; do
-        process_gptoss_file "$basename" "$config_name" "$captioner_model" "$run" "$MODE" "$GPTOSS_PORT" "false"
-      done
-    done
-  done
-done
-
-# Phase 3b: Run GPT-OSS processing on captioner outputs for comparison dataset
-if [[ ${#COMP_VIDEO_FILES[@]} -gt 0 ]]; then
-  echo "Starting GPT-OSS processing phase for comparison dataset"
+# Phase 3: Run Llama processing on doctr files
+if [[ ${#DOCTR_VIDEO_FILES[@]} -gt 0 ]]; then
+  echo "Starting Llama processing phase for doctr dataset"
   for (( run=1; run<=NUM_RUNS; run++ )); do
-    for basename in "${COMP_VIDEO_FILES[@]}"; do
-      for config_name in "${CONFIGS[@]}"; do
-        # Process gptoss for each captioner model output
-        for captioner_model in "${CAPTIONER_MODELS[@]}"; do
-          process_gptoss_file "$basename" "$config_name" "$captioner_model" "$run" "$MODE" "$GPTOSS_PORT" "true"
-        done
-      done
+    for basename in "${DOCTR_VIDEO_FILES[@]}"; do
+      process_llama_doctr_file "$basename" "$run" "$MODE" "$LLAMA_PORT"
     done
   done
 fi
