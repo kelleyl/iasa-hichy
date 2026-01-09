@@ -1,4 +1,4 @@
-#!/bin/bash
+id #!/bin/bash
 set -euo pipefail
 shopt -s nullglob
 
@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 EVAL_ROOT="/home/kmlynch/clams_apps/aapb-evaluations"
 GOLD_DIR="/home/kmlynch/clams_apps/aapb-annotations/understanding-chyrons/golds"
+CHYRON_ANNOTATIONS_DIR="/home/kmlynch/clams_apps/aapb-annotations/understanding-chyrons"
 
 # Parse command line arguments
 PIPELINE_OUTPUT_DIR=""
@@ -335,10 +336,193 @@ done
 
 echo "✓ Performance ranking saved to: $RANKING_FILE"
 
+# Generate era-based analysis (pre/post 2000)
+echo "Generating era-based analysis (pre/post 2000)..."
+ERA_ANALYSIS_FILE="$RESULTS_DIR/era_analysis.md"
+
+# Create Python script to perform era segmentation analysis
+cat > "$RESULTS_DIR/era_segmentation.py" << 'PYTHON_EOF'
+import json
+import os
+import sys
+from collections import defaultdict
+import glob
+
+def load_era_datasets():
+    """Load pre/post 2000 dataset segmentations."""
+    base_path = '/home/kmlynch/clams_apps/aapb-annotations/understanding-chyrons'
+    
+    pre_2000_file = f'{base_path}/250606-hi-chy-hi-pre-2000/hi-chy-hi-pre-2000_img_labels.json'
+    post_2000_file = f'{base_path}/250606-hi-chy-hi-post-2000/hi-chy-hi-post-2000_img_labels.json'
+    
+    def extract_basenames(json_file):
+        with open(json_file, 'r') as f:
+            data = json.load(f)
+        return {os.path.splitext(entry[0])[0] for entry in data}
+    
+    pre_2000_basenames = extract_basenames(pre_2000_file)
+    post_2000_basenames = extract_basenames(post_2000_file)
+    
+    return pre_2000_basenames, post_2000_basenames
+
+def get_era(basename, pre_2000_set, post_2000_set):
+    """Determine era for a given basename."""
+    if basename in pre_2000_set:
+        return "pre-2000"
+    elif basename in post_2000_set:
+        return "post-2000"
+    else:
+        return "unknown"
+
+def parse_evaluation_file(eval_file):
+    """Parse evaluation results file and extract metrics by basename."""
+    results = {}
+    
+    with open(eval_file, 'r') as f:
+        lines = f.readlines()
+    
+    # Find the start of the results table
+    in_results = False
+    for line in lines:
+        line = line.strip()
+        if line.startswith('|') and 'basename' in line.lower():
+            in_results = True
+            continue
+        elif in_results and line.startswith('|') and not line.startswith('|---'):
+            # Parse table row
+            parts = [p.strip() for p in line.split('|')[1:-1]]  # Remove empty first/last
+            if len(parts) >= 3:
+                basename = parts[0]
+                try:
+                    metric1 = float(parts[1])
+                    metric2 = float(parts[2])
+                    results[basename] = (metric1, metric2)
+                except (ValueError, IndexError):
+                    continue
+        elif in_results and not line.startswith('|'):
+            break
+    
+    return results
+
+def analyze_by_era(results_dir):
+    """Analyze evaluation results segmented by era."""
+    pre_2000_set, post_2000_set = load_era_datasets()
+    
+    era_stats = {
+        'pre-2000': defaultdict(lambda: {'count': 0, 'metric1_sum': 0, 'metric2_sum': 0, 'metrics': []}),
+        'post-2000': defaultdict(lambda: {'count': 0, 'metric1_sum': 0, 'metric2_sum': 0, 'metrics': []}),
+        'unknown': defaultdict(lambda: {'count': 0, 'metric1_sum': 0, 'metric2_sum': 0, 'metrics': []})
+    }
+    
+    # Find all evaluation result files
+    eval_files = glob.glob(f"{results_dir}/**/evaluation_results.md", recursive=True)
+    
+    for eval_file in eval_files:
+        # Extract model/config from path
+        rel_path = os.path.relpath(eval_file, results_dir)
+        path_parts = rel_path.split('/')
+        
+        if len(path_parts) >= 3:
+            model_config = '/'.join(path_parts[:-1])  # Everything except evaluation_results.md
+        else:
+            model_config = os.path.dirname(rel_path)
+        
+        # Parse evaluation results
+        results = parse_evaluation_file(eval_file)
+        
+        # Segment by era
+        for basename, (metric1, metric2) in results.items():
+            era = get_era(basename, pre_2000_set, post_2000_set)
+            
+            era_stats[era][model_config]['count'] += 1
+            era_stats[era][model_config]['metric1_sum'] += metric1
+            era_stats[era][model_config]['metric2_sum'] += metric2
+            era_stats[era][model_config]['metrics'].append((metric1, metric2))
+    
+    return era_stats, len(pre_2000_set), len(post_2000_set)
+
+def generate_era_report(results_dir, output_file):
+    """Generate era-based analysis report."""
+    era_stats, pre_2000_total, post_2000_total = analyze_by_era(results_dir)
+    
+    with open(output_file, 'w') as f:
+        f.write("# Era-Based Performance Analysis (Pre/Post 2000)\n\n")
+        f.write(f"Generated on: {os.popen('date').read().strip()}\n\n")
+        
+        f.write("## Dataset Overview\n\n")
+        f.write(f"- **Pre-2000 Dataset**: {pre_2000_total} entries\n")
+        f.write(f"- **Post-2000 Dataset**: {post_2000_total} entries\n")
+        f.write(f"- **Total**: {pre_2000_total + post_2000_total} entries\n")
+        f.write(f"- **Era Distribution**: {pre_2000_total/(pre_2000_total+post_2000_total)*100:.1f}% pre-2000, {post_2000_total/(pre_2000_total+post_2000_total)*100:.1f}% post-2000\n\n")
+        
+        # Generate summary for each era
+        for era in ['pre-2000', 'post-2000']:
+            f.write(f"## {era.title()} Performance\n\n")
+            f.write("| Model/Config | Count | Avg Metric 1 | Avg Metric 2 |\n")
+            f.write("|--------------|-------|--------------|-------------|\n")
+            
+            for model_config, stats in era_stats[era].items():
+                if stats['count'] > 0:
+                    avg_metric1 = stats['metric1_sum'] / stats['count']
+                    avg_metric2 = stats['metric2_sum'] / stats['count']
+                    f.write(f"| {model_config} | {stats['count']} | {avg_metric1:.3f} | {avg_metric2:.3f} |\n")
+            
+            f.write("\n")
+        
+        # Generate comparative analysis
+        f.write("## Comparative Analysis\n\n")
+        f.write("| Model/Config | Pre-2000 Avg M1 | Post-2000 Avg M1 | Difference | Pre-2000 Avg M2 | Post-2000 Avg M2 | Difference |\n")
+        f.write("|--------------|------------------|-------------------|------------|------------------|-------------------|------------|\n")
+        
+        # Find common model/config combinations
+        common_configs = set(era_stats['pre-2000'].keys()) & set(era_stats['post-2000'].keys())
+        
+        for model_config in common_configs:
+            pre_stats = era_stats['pre-2000'][model_config]
+            post_stats = era_stats['post-2000'][model_config]
+            
+            if pre_stats['count'] > 0 and post_stats['count'] > 0:
+                pre_m1 = pre_stats['metric1_sum'] / pre_stats['count']
+                post_m1 = post_stats['metric1_sum'] / post_stats['count']
+                pre_m2 = pre_stats['metric2_sum'] / pre_stats['count']
+                post_m2 = post_stats['metric2_sum'] / post_stats['count']
+                
+                diff_m1 = post_m1 - pre_m1
+                diff_m2 = post_m2 - pre_m2
+                
+                f.write(f"| {model_config} | {pre_m1:.3f} | {post_m1:.3f} | {diff_m1:+.3f} | {pre_m2:.3f} | {post_m2:.3f} | {diff_m2:+.3f} |\n")
+        
+        f.write("\n")
+        
+        # Add interpretation notes
+        f.write("## Analysis Notes\n\n")
+        f.write("- **Positive Difference**: Post-2000 performance is worse (higher error rates)\n")
+        f.write("- **Negative Difference**: Post-2000 performance is better (lower error rates)\n")
+        f.write("- **Metric 1**: Typically Character Error Rate (CER)\n")
+        f.write("- **Metric 2**: Typically Word Error Rate (WER)\n\n")
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        print("Usage: python era_segmentation.py <results_dir> <output_file>")
+        sys.exit(1)
+    
+    results_dir = sys.argv[1]
+    output_file = sys.argv[2]
+    
+    generate_era_report(results_dir, output_file)
+    print(f"Era analysis report generated: {output_file}")
+PYTHON_EOF
+
+# Run the era segmentation analysis
+python3 "$RESULTS_DIR/era_segmentation.py" "$RESULTS_DIR" "$ERA_ANALYSIS_FILE"
+
+echo "✓ Era-based analysis saved to: $ERA_ANALYSIS_FILE"
+
 echo
 echo "=== COMPARISON COMPLETE ==="
 echo "Summary CSV: $SUMMARY_FILE"
 echo "Detailed Report: $REPORT_FILE"
 echo "Performance Ranking: $RANKING_FILE"
+echo "Era Analysis: $ERA_ANALYSIS_FILE"
 echo
 echo "Individual evaluation results are available in: $RESULTS_DIR"

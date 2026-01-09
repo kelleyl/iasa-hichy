@@ -1,0 +1,129 @@
+JCDL Paper: Evaluating Vision-Language Models for Chyron Text Transcription in Historical Broadcast Video
+
+Working Notes and Thoughts
+===============================================================================
+
+Introduction Refinements
+------------------------
+- Need to strengthen the motivation around digital archives and preservation
+- Add statistics about the scale of broadcast video archives (AAPB, LOC, etc.)
+- Emphasize the unique challenges of historical video (quality degradation, format changes)
+- Position this as first systematic study of VLMs for chyron OCR in archival context
+
+Research Questions - Consider Adding
+-----------------------------------
+- How does video quality (resolution, compression artifacts) affect transcription accuracy?
+- What is the computational cost vs. accuracy tradeoff for different model configurations?
+- How do results vary across different types of broadcast content (news, interviews, documentaries)?
+
+Dataset Section - Key Points to Develop
+---------------------------------------
+- Describe the Hawaii public television collection in more detail
+- Explain why "I" type annotations (person identification) were chosen as focus
+- Add inter-annotator agreement statistics if available
+- Include examples of challenging cases (Hawaiian text, multi-line, overlapping graphics)
+- Consider adding demographic/temporal distribution of the data
+
+Methodology - Areas to Expand
+-----------------------------
+- Justify choice of LLaVA vs SmolVLM2 (what makes these representative?)
+- Explain the beam search parameter selection (why 3?)
+- Detail the instruction engineering process - how were prompts developed?
+- Add ablation study on different prompt variants if possible
+
+Results Analysis - Key Insights
+-------------------------------
+From preliminary data:
+- SmolVLM2 generally outperforms LLaVA
+- Structured instructions (4) substantially better than basic (3)
+- Huge gap between case-sensitive and case-insensitive metrics
+- WER much higher than CER - suggests word boundary issues
+
+Error Analysis Framework
+------------------------
+Need to categorize errors by type:
+1. Character substitution errors (OCR mistakes)
+2. Case errors (capitalization wrong but text correct)
+3. Spacing/formatting errors (word boundaries, line breaks)
+4. Hallucination errors (text not present in image)
+5. Omission errors (text present but not transcribed)
+6. Hawaiian character errors (okina handling)
+
+For each category, analyze:
+- Which model/config combinations perform best
+- Whether errors correlate with image quality, font size, background complexity
+- Impact on downstream applications (search, accessibility)
+
+Discussion Points to Address
+----------------------------
+- Compare to traditional OCR approaches (would be good baseline)
+- Discuss practical deployment considerations for archives
+- Address privacy/ethical issues with historical broadcast content
+- Consider environmental impact of GPU-intensive processing
+- Explore crowd-sourcing or active learning alternatives
+
+Technical Implementation Details
+-------------------------------
+- CLAMS/MMIF integration allows seamless pipeline processing
+- GPU memory requirements and optimization strategies
+- Batch processing considerations for large-scale deployment
+- Quality control and human-in-the-loop workflows
+
+Future Work Directions
+---------------------
+- Fine-tuning on domain-specific data (broadcast graphics)
+- Multi-frame temporal consistency (same speaker across frames)
+- Integration with ASR for cross-modal verification
+- Extension to other graphic types (headlines, stock tickers, etc.)
+- Real-time processing for live broadcast analysis
+
+Paper Structure Considerations
+-----------------------------
+- Balance technical depth with accessibility for JCDL audience
+- Include sufficient implementation details for reproducibility
+- Provide clear practical recommendations for digital archives
+- Consider supplementary material for detailed error analysis
+- Ensure ethical considerations are adequately addressed
+
+Figures/Tables to Include
+------------------------
+1. Sample frames showing different chyron types and challenges
+2. Performance comparison table (models x configs x metrics)
+3. Error type distribution charts
+4. Case sensitivity impact visualization
+5. Computational cost comparison
+6. Processing pipeline architecture diagram
+
+Writing Priorities
+-----------------
+1. Strengthen dataset description with concrete examples
+2. Expand error analysis with specific case studies  
+3. Add practical recommendations for archival institutions
+4. Include computational cost analysis
+5. Develop reproducibility section
+6. Address limitations and ethical considerations more thoroughly
+
+Questions for Further Investigation
+----------------------------------
+- How do results compare to commercial OCR solutions?
+- What is the minimum viable accuracy for practical deployment?
+- How does performance vary by decade/era of broadcast video?
+- Could synthetic data generation improve model performance?
+- What role could human-computer collaboration play in scaling?
+
+Key Messages for JCDL Audience
+------------------------------
+- Vision-language models offer new opportunities for archival video processing
+- Systematic evaluation reveals both promise and limitations
+- Instruction engineering has significant impact on performance
+- Case-insensitive evaluation more practically relevant for search applications
+- Human expertise still essential for quality assurance and edge cases
+- Open research questions around optimization for archival contexts
+
+Collaboration and Impact
+-----------------------
+- Dataset could be valuable for broader research community
+- Methodology applicable to other types of video graphics/text
+- Findings relevant for multimedia information retrieval researchers
+- Potential for follow-up studies with refined approaches
+- Connection to ongoing digital humanities preservation efforts

@@ -9,7 +9,8 @@ comps_outputs/*
 comps_results/*
 results/*
 merged_html/*
-
+*.csv
+*.zip
 .DS_Store
 
 # Python
@@ -60,3 +61,4 @@ logs/
 
 # Dependencies
 node_modules/
+hi-chy-hi_mmif.zip
