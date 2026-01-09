@@ -2,6 +2,13 @@ image_outputs/*
 hi-chy/*
 .venv/*
 html/*
+*.mmif
+dataset_explorer/*
+comps_mmif/*
+comps_outputs/*
+comps_results/*
+results/*
+merged_html/*
 
 .DS_Store
 
