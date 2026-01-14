@@ -1,4 +1,6 @@
 import argparse
+import json
+import re
 from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
@@ -50,20 +52,93 @@ def get_gold_data(gold_file: Path) -> list:
 
     return df[['start', 'end', 'text']].to_dict('records')
 
-def get_pred_data(mmif_file: Path) -> dict:
+def get_pred_data_raw_json(mmif_file: Path) -> dict:
     """
-    Parses MMIF. Handles TextDocument -> Origin (TimeFrame) -> Representative (TimePoint) chain.
+    Fallback parser using raw JSON when mmif-python fails.
+    Handles MMIF files with non-standard ID placement (e.g., IDs in properties.id).
     """
     try:
-        mmif = Mmif(open(mmif_file).read())
+        m = json.load(open(mmif_file))
     except Exception:
         return {}
 
     preds = {}
-    
+
+    # Build TimePoint lookup: id -> timePoint value
+    timepoints = {}
+    for view in m.get('views', []):
+        for a in view.get('annotations', []):
+            if 'TimePoint' in a.get('@type', ''):
+                props = a.get('properties', {})
+                # Handle both standard (top-level id) and non-standard (properties.id) formats
+                tp_id = props.get('id') or a.get('id', '')
+                tp_val = props.get('timePoint')
+                if tp_id and tp_val is not None:
+                    timepoints[tp_id] = tp_val
+
+    # Build TextDocument lookup and find their time via Alignments
+    textdocs = {}  # td_id -> text
+    td_to_tp = {}  # td_id -> tp_id (via alignment)
+
+    for view in m.get('views', []):
+        for a in view.get('annotations', []):
+            atype = a.get('@type', '')
+            props = a.get('properties', {})
+            ann_id = props.get('id') or a.get('id', '')
+
+            if 'TextDocument' in atype:
+                text = props.get('text', {}).get('@value', '') if isinstance(props.get('text'), dict) else props.get('text', '')
+                if text and ann_id:
+                    textdocs[ann_id] = text
+
+                    # Check for origin property (SmolVLM2-style linking)
+                    origin_id = props.get('origin')
+                    if origin_id:
+                        # Find the TimeFrame and get its representative
+                        for v in m.get('views', []):
+                            for tf in v.get('annotations', []):
+                                tf_id = tf.get('properties', {}).get('id') or tf.get('id', '')
+                                if tf_id == origin_id and 'TimeFrame' in tf.get('@type', ''):
+                                    reps = tf.get('properties', {}).get('representatives', [])
+                                    if reps:
+                                        td_to_tp[ann_id] = reps[0]
+                                    break
+
+            elif 'Alignment' in atype:
+                src = props.get('source', '')
+                tgt = props.get('target', '')
+                # If source is TimePoint and target is TextDocument
+                if 'tp_' in src and 'td_' in tgt:
+                    td_to_tp[tgt] = src
+
+    # Build predictions dict: time_ms -> text
+    for td_id, text in textdocs.items():
+        tp_id = td_to_tp.get(td_id)
+        if not tp_id:
+            continue
+        time_ms = timepoints.get(tp_id)
+        if time_ms is not None:
+            preds[int(time_ms)] = text
+
+    return preds
+
+
+def get_pred_data(mmif_file: Path) -> dict:
+    """
+    Parses MMIF. Handles TextDocument -> Origin (TimeFrame) -> Representative (TimePoint) chain.
+    Falls back to raw JSON parsing if mmif-python fails.
+    """
+    try:
+        mmif = Mmif(open(mmif_file).read())
+    except Exception:
+        # Fallback to raw JSON parsing for non-standard MMIF formats
+        return get_pred_data_raw_json(mmif_file)
+
+    preds = {}
+
     # Find the view containing TextDocuments
     tr_views = mmif.get_all_views_contain(DocumentTypes.TextDocument)
-    
+
     for view in tr_views:
         for td in view.get_annotations(DocumentTypes.TextDocument):
             text_content = td.text_value
@@ -72,25 +147,25 @@ def get_pred_data(mmif_file: Path) -> dict:
             # --- RESOLUTION LOGIC ---
             # Strategy: TextDocument -> origin (TimeFrame) -> representatives (TimePoint) -> timePoint value
             origin_id = td.get_property('origin')
-            
+
             if origin_id:
                 try:
                     # Get the TimeFrame object
                     tf_obj = mmif[origin_id]
-                    
+
                     # Look for representatives
                     reps = tf_obj.get_property('representatives')
                     if reps:
-                        tp_id = reps[0] 
+                        tp_id = reps[0]
                         tp_obj = mmif[tp_id]
-                        
+
                         # RAW VALUE is already in milliseconds for SmolVLM2/CLAMS
                         raw_val = tp_obj.get_property('timePoint')
                         ms = int(raw_val)
                         preds[ms] = text_content
                 except Exception:
                     continue
-            
+
             # Fallback: Explicit alignments
             elif td.get_all_aligned():
                 for alignment in td.get_all_aligned():
@@ -102,6 +177,10 @@ def get_pred_data(mmif_file: Path) -> dict:
                                 preds[int(raw_time)] = text_content
                         except Exception:
                             continue
+
+    # If mmif-python parsed but found nothing, try raw JSON as last resort
+    if not preds:
+        preds = get_pred_data_raw_json(mmif_file)
 
     return preds
 
@@ -123,9 +202,11 @@ def main():
     # TQDM Loop
     for mmif_file in tqdm(mmif_files, desc="Extracting OCR", unit="file"):
         
-        # 1. Clean GUID Extraction
+        # 1. Clean GUID Extraction - find cpb-aacip-* pattern in filename
+        # Handles both cpb-aacip-{hash} and cpb-aacip-{num}-{id} formats
         clean_name = mmif_file.name.replace('.mmif', '')
-        guid = clean_name.split('_')[0]
+        guid_match = re.search(r'(cpb-aacip-[a-z0-9-]+?)(?:_|$)', clean_name)
+        guid = guid_match.group(1) if guid_match else clean_name.split('_')[0]
         
         # 2. Locate Gold File
         gold_file = gold_dir / f"{guid}.json"
