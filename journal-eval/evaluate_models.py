@@ -2,7 +2,7 @@
 """
 Evaluate OCR model performance on chyron transcription.
 
-Compares DeepSeek and SmolVLM2 predictions against gold standard,
+Compares DocTR, DeepSeek, and SmolVLM2 predictions against gold standard,
 computing CER/WER metrics across different dataset splits.
 """
 
@@ -79,6 +79,8 @@ class Prediction:
     smolvlm2_prediction_normalized: str = ""
     deepseek_prediction: str = ""
     deepseek_prediction_normalized: str = ""
+    doctr_prediction: str = ""
+    doctr_prediction_normalized: str = ""
     dataset: str = ""  # HI or comps
     origin_label: str = ""  # N, H, J, etc.
     flowers_label: str = ""
@@ -258,6 +260,40 @@ def load_deepseek_data(filepath: Path, predictions: dict[tuple[str, str], Predic
                 predictions[key] = pred
 
 
+def load_doctr_data(filepath: Path, predictions: dict[tuple[str, str], Prediction], dataset: str):
+    """Load DocTR results and merge into predictions dict."""
+    with open(filepath, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            key = (row['GUID'], row['Time_MS'])
+
+            doctr_pred = row.get('Prediction', '')
+            doctr_norm = normalize_text(doctr_pred)
+
+            if key in predictions:
+                predictions[key].doctr_prediction = doctr_pred
+                predictions[key].doctr_prediction_normalized = doctr_norm
+            else:
+                # Create new prediction if not in existing data
+                gold_text = row.get('Gold_Text', '')
+                gold_normalized = normalize_text(gold_text) if gold_text and gold_text != "[NO GOLD MATCH]" else ""
+                diacritics = detect_diacritics(gold_text)
+
+                pred = Prediction(
+                    guid=row['GUID'],
+                    time_ms=row['Time_MS'],
+                    gold_text=gold_text,
+                    gold_text_normalized=gold_normalized,
+                    doctr_prediction=doctr_pred,
+                    doctr_prediction_normalized=doctr_norm,
+                    dataset=dataset,
+                    has_okina=diacritics["has_okina"],
+                    has_kahako=diacritics["has_kahako"],
+                    has_diacritics=diacritics["has_any"],
+                )
+                predictions[key] = pred
+
+
 def evaluate_model(
     predictions: dict[tuple[str, str], Prediction],
     model: str,
@@ -272,7 +308,7 @@ def evaluate_model(
 
     Args:
         predictions: Dict of all predictions
-        model: "smolvlm2" or "deepseek"
+        model: "smolvlm2", "deepseek", or "doctr"
         use_normalized: Whether to use normalized text for comparison
         filter_dataset: Filter by dataset (HI, comps)
         filter_origin: Filter by origin label (N, H, J, etc.)
@@ -331,6 +367,11 @@ def evaluate_model(
                 hypothesis = pred.deepseek_prediction_normalized
             else:
                 hypothesis = pred.deepseek_prediction
+        elif model == "doctr":
+            if use_normalized:
+                hypothesis = pred.doctr_prediction_normalized
+            else:
+                hypothesis = pred.doctr_prediction
         else:
             raise ValueError(f"Unknown model: {model}")
 
@@ -381,6 +422,12 @@ def main():
         help="Path to DeepSeek comps results CSV",
     )
     parser.add_argument(
+        "--doctr-hawaii",
+        type=Path,
+        default=Path("doctr_hawaii_review.csv"),
+        help="Path to DocTR Hawaii results CSV",
+    )
+    parser.add_argument(
         "--dataset",
         choices=["HI", "comps", "all"],
         default="all",
@@ -423,6 +470,12 @@ def main():
         default=None,
         help="Output results to CSV file",
     )
+    parser.add_argument(
+        "--detailed-output",
+        type=Path,
+        default=None,
+        help="Output detailed per-prediction results to CSV file",
+    )
     args = parser.parse_args()
 
     # Load data
@@ -440,6 +493,11 @@ def main():
         load_deepseek_data(args.deepseek_comps, predictions, "comps")
         print(f"  Merged DeepSeek comps data ({len(predictions) - initial_count:,} new records)")
 
+    if args.doctr_hawaii.exists():
+        initial_count = len(predictions)
+        load_doctr_data(args.doctr_hawaii, predictions, "HI")
+        print(f"  Merged DocTR Hawaii data ({len(predictions) - initial_count:,} new records)")
+
     print(f"  Total predictions: {len(predictions):,}")
 
     use_normalized = not args.unnormalized
@@ -454,7 +512,7 @@ def main():
 
     filter_dataset = None if args.dataset == "all" else args.dataset
 
-    for model in ["smolvlm2", "deepseek"]:
+    for model in ["smolvlm2", "deepseek", "doctr"]:
         metrics = evaluate_model(
             predictions, model, use_normalized,
             filter_dataset=filter_dataset,
@@ -486,7 +544,7 @@ def main():
 
         for dataset in ["HI", "comps"]:
             print(f"\n>>> Dataset: {dataset}")
-            for model in ["smolvlm2", "deepseek"]:
+            for model in ["smolvlm2", "deepseek", "doctr"]:
                 metrics = evaluate_model(
                     predictions, model, use_normalized,
                     filter_dataset=dataset,
@@ -524,7 +582,7 @@ def main():
 
         for origin in sorted(origin_labels):
             print(f"\n>>> Origin: {origin}")
-            for model in ["smolvlm2", "deepseek"]:
+            for model in ["smolvlm2", "deepseek", "doctr"]:
                 metrics = evaluate_model(
                     predictions, model, use_normalized,
                     filter_dataset=filter_dataset,
@@ -560,7 +618,7 @@ def main():
 
         for flowers_val, flowers_name in flowers_labels:
             print(f"\n>>> Flowers: {flowers_name}")
-            for model in ["smolvlm2", "deepseek"]:
+            for model in ["smolvlm2", "deepseek", "doctr"]:
                 metrics = evaluate_model(
                     predictions, model, use_normalized,
                     filter_dataset=filter_dataset,
@@ -611,7 +669,7 @@ def main():
 
         for diacritics_val, diacritics_name in diacritics_labels:
             print(f"\n>>> {diacritics_name}")
-            for model in ["smolvlm2", "deepseek"]:
+            for model in ["smolvlm2", "deepseek", "doctr"]:
                 metrics = evaluate_model(
                     predictions, model, use_normalized,
                     filter_dataset=filter_dataset,
@@ -646,6 +704,96 @@ def main():
             writer.writeheader()
             writer.writerows(results)
         print(f"\nResults written to {args.csv_output}")
+
+    # Detailed per-prediction output
+    if args.detailed_output:
+        detailed_rows = []
+        for pred in predictions.values():
+            row = {
+                "guid": pred.guid,
+                "time_ms": pred.time_ms,
+                "dataset": pred.dataset,
+                "origin_label": pred.origin_label,
+                "flowers_label": pred.flowers_label,
+                "has_okina": pred.has_okina,
+                "has_diacritics": pred.has_diacritics,
+                "gold_text": pred.gold_text,
+                "gold_text_normalized": pred.gold_text_normalized,
+                "smolvlm2_prediction": pred.smolvlm2_prediction,
+                "smolvlm2_prediction_normalized": pred.smolvlm2_prediction_normalized,
+                "deepseek_prediction": pred.deepseek_prediction,
+                "deepseek_prediction_normalized": pred.deepseek_prediction_normalized,
+                "doctr_prediction": pred.doctr_prediction,
+                "doctr_prediction_normalized": pred.doctr_prediction_normalized,
+            }
+
+            # Compute metrics for each model
+            gold = pred.gold_text_normalized if use_normalized else pred.gold_text
+            if gold and gold not in ("[NO GOLD MATCH]", "[no gold match]"):
+                # SmolVLM2
+                smol_hyp = pred.smolvlm2_prediction_normalized if use_normalized else pred.smolvlm2_prediction
+                if smol_hyp:
+                    row["smolvlm2_cer"] = compute_cer(gold, smol_hyp)
+                    row["smolvlm2_wer"] = compute_wer(gold, smol_hyp)
+                    row["smolvlm2_exact_match"] = (gold == smol_hyp)
+                else:
+                    row["smolvlm2_cer"] = ""
+                    row["smolvlm2_wer"] = ""
+                    row["smolvlm2_exact_match"] = ""
+
+                # DeepSeek
+                deep_hyp = pred.deepseek_prediction_normalized if use_normalized else pred.deepseek_prediction
+                if deep_hyp:
+                    row["deepseek_cer"] = compute_cer(gold, deep_hyp)
+                    row["deepseek_wer"] = compute_wer(gold, deep_hyp)
+                    row["deepseek_exact_match"] = (gold == deep_hyp)
+                else:
+                    row["deepseek_cer"] = ""
+                    row["deepseek_wer"] = ""
+                    row["deepseek_exact_match"] = ""
+
+                # DocTR
+                doctr_hyp = pred.doctr_prediction_normalized if use_normalized else pred.doctr_prediction
+                if doctr_hyp:
+                    row["doctr_cer"] = compute_cer(gold, doctr_hyp)
+                    row["doctr_wer"] = compute_wer(gold, doctr_hyp)
+                    row["doctr_exact_match"] = (gold == doctr_hyp)
+                else:
+                    row["doctr_cer"] = ""
+                    row["doctr_wer"] = ""
+                    row["doctr_exact_match"] = ""
+            else:
+                row["smolvlm2_cer"] = ""
+                row["smolvlm2_wer"] = ""
+                row["smolvlm2_exact_match"] = ""
+                row["deepseek_cer"] = ""
+                row["deepseek_wer"] = ""
+                row["deepseek_exact_match"] = ""
+                row["doctr_cer"] = ""
+                row["doctr_wer"] = ""
+                row["doctr_exact_match"] = ""
+
+            detailed_rows.append(row)
+
+        # Sort by guid, then time_ms
+        detailed_rows.sort(key=lambda x: (x["guid"], int(x["time_ms"]) if x["time_ms"] else 0))
+
+        with open(args.detailed_output, 'w', newline='', encoding='utf-8') as f:
+            fieldnames = [
+                "guid", "time_ms", "dataset", "origin_label", "flowers_label",
+                "has_okina", "has_diacritics",
+                "gold_text", "gold_text_normalized",
+                "smolvlm2_prediction", "smolvlm2_prediction_normalized",
+                "smolvlm2_cer", "smolvlm2_wer", "smolvlm2_exact_match",
+                "deepseek_prediction", "deepseek_prediction_normalized",
+                "deepseek_cer", "deepseek_wer", "deepseek_exact_match",
+                "doctr_prediction", "doctr_prediction_normalized",
+                "doctr_cer", "doctr_wer", "doctr_exact_match",
+            ]
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(detailed_rows)
+        print(f"\nDetailed results written to {args.detailed_output}")
 
 
 if __name__ == "__main__":
